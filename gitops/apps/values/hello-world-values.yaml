@@ -7,7 +7,7 @@ image:
   repository: 426187996066.dkr.ecr.ap-south-1.amazonaws.com/hello-world
   # CI overwrites this line with the pushed digest (sha256:...). Digest wins
   # over tag in the chart's image helper, so deploys are immutable.
-  digest: ""
+  digest: "sha256:203dd2cd697b9787a0823070374fd5bf3645359e849266d5bd970a4d320d4d98"
   tag: "latest"
   pullPolicy: IfNotPresent
 
