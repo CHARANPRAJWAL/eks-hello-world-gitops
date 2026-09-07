@@ -4,7 +4,7 @@
 
 image:
   # Set by Terraform output (ECR repo URL). Placeholder until first apply.
-  repository: ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/hello-world
+  repository: 426187996066.dkr.ecr.ap-south-1.amazonaws.com/hello-world
   # CI overwrites this line with the pushed digest (sha256:...). Digest wins
   # over tag in the chart's image helper, so deploys are immutable.
   digest: ""
