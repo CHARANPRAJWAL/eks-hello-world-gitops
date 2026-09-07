@@ -84,3 +84,4 @@ process.on('uncaughtException', (err) => {
   logger.fatal({ err }, 'uncaught exception');
   process.exit(1);
 });
+
