@@ -1,0 +1,19 @@
+apiVersion: v2
+name: hello-world
+description: >-
+  Hello World microservice. Ships a hardened Deployment with health probes,
+  HPA, PodDisruptionBudget, a default-deny NetworkPolicy, and Prometheus
+  ServiceMonitor + PrometheusRule so the workload is observable and
+  self-healing out of the box.
+type: application
+
+# Chart version is the packaging version; appVersion tracks the shipped image.
+# CI overrides the running image by digest via values, so appVersion is a
+# human-readable pointer rather than the deploy source of truth.
+version: 0.1.0
+appVersion: "1.0.0"
+
+kubeVersion: ">=1.27.0-0"
+
+maintainers:
+  - name: platform

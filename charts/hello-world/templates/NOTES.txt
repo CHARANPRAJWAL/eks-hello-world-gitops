@@ -1,0 +1,15 @@
+hello-world {{ .Chart.AppVersion }} deployed as release {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+Image:            {{ include "hello-world.image" . }}
+Autoscaling:      {{ if .Values.autoscaling.enabled }}enabled ({{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} replicas, target {{ .Values.autoscaling.targetCPUUtilizationPercentage }}% CPU){{ else }}disabled ({{ .Values.replicaCount }} replicas){{ end }}
+ServiceMonitor:   {{ if .Values.serviceMonitor.enabled }}enabled{{ else }}disabled (enable once kube-prometheus-stack CRDs are installed){{ end }}
+PrometheusRule:   {{ if .Values.prometheusRule.enabled }}enabled{{ else }}disabled{{ end }}
+
+Verify the rollout:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "hello-world.fullname" . }}
+
+Reach the service locally (ClusterIP):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "hello-world.fullname" . }} 8080:{{ .Values.service.port }}
+  curl -s localhost:8080/            # -> {{ .Values.config.greeting }}
+  curl -s localhost:8080/readyz      # -> {"status":"ready"}
+  curl -s localhost:8080/metrics     # -> Prometheus exposition

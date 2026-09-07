@@ -1,0 +1,28 @@
+# Argo CD AppProject scoping every child app. Rather than using the wide-open
+# `default` project, this restricts what the managed applications may deploy and
+# where — the "access scoped in every direction" criterion applied to the CD
+# layer itself. A compromised or buggy manifest cannot target arbitrary clusters
+# or namespaces.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Platform and application workloads for the dev cluster
+  sourceRepos:
+    - "*"
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  # Cluster-scoped resources these apps are allowed to manage (CRDs, controller
+  # RBAC, etc.). Kept broad for dev; a real prod project would enumerate exactly
+  # the cluster resources each app needs.
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

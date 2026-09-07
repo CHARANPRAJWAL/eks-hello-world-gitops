@@ -1,0 +1,39 @@
+# The hello-world app itself, deployed from the chart in this same repo. Wave 2:
+# after the monitoring CRDs exist, so its ServiceMonitor and PrometheusRule
+# apply cleanly. Image tag/digest is overridden by CI committing to
+# gitops/apps/values/hello-world-values.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hello-world
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  # Multi-source: the chart lives at charts/hello-world and the environment
+  # values live at gitops/apps/values. The $values ref lets the Helm source
+  # read a values file from elsewhere in the same repo without fragile
+  # ../.. relative paths.
+  sources:
+    - repoURL: https://github.com/CHARANPRAJWAL/eks-hello-world-gitops.git
+      targetRevision: main
+      path: charts/hello-world
+      helm:
+        releaseName: hello-world
+        valueFiles:
+          - $values/gitops/apps/values/hello-world-values.yaml
+    - repoURL: https://github.com/CHARANPRAJWAL/eks-hello-world-gitops.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: hello-world
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

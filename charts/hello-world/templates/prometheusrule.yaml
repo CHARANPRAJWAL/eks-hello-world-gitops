@@ -1,0 +1,115 @@
+{{- if .Values.prometheusRule.enabled -}}
+{{- $svc := include "hello-world.name" . -}}
+{{- $latency := .Values.prometheusRule.slo.latencyObjectiveSeconds -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "hello-world.fullname" . }}
+  labels:
+    {{- include "hello-world.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: hello-world.slo
+      rules:
+        # --- Recording rules: error ratio over multiple windows. Computing the
+        # ratio once here keeps the alert expressions readable and consistent.
+        - record: job:http_request_error_ratio:ratio5m
+          expr: |
+            sum(rate(http_requests_total{service="{{ $svc }}",status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_requests_total{service="{{ $svc }}"}[5m])), 1e-9)
+        - record: job:http_request_error_ratio:ratio1h
+          expr: |
+            sum(rate(http_requests_total{service="{{ $svc }}",status_code=~"5.."}[1h]))
+            /
+            clamp_min(sum(rate(http_requests_total{service="{{ $svc }}"}[1h])), 1e-9)
+
+        # --- Multi-window burn-rate alerts against a 99.9% availability SLO
+        # (0.1% error budget). Fast burn (14.4x) pages; slow burn (6x) warns.
+        # This fires on budget consumption, not on "it's down", so a slow leak
+        # is caught before it becomes an outage.
+        - alert: HelloWorldErrorBudgetFastBurn
+          expr: |
+            job:http_request_error_ratio:ratio5m > (14.4 * 0.001)
+            and
+            job:http_request_error_ratio:ratio1h > (14.4 * 0.001)
+          for: 2m
+          labels:
+            severity: critical
+            service: {{ $svc }}
+          annotations:
+            summary: "hello-world burning error budget fast (14.4x)"
+            description: "5m and 1h error ratios both exceed 14.4x the SLO budget. At this rate the 30-day budget is gone in ~2 days."
+            runbook_url: "https://github.com/CHARANPRAJWAL/eks-hello-world-gitops/blob/main/docs/RUNBOOK.md#helloworlderrorbudgetfastburn"
+
+        - alert: HelloWorldErrorBudgetSlowBurn
+          expr: |
+            job:http_request_error_ratio:ratio1h > (6 * 0.001)
+          for: 15m
+          labels:
+            severity: warning
+            service: {{ $svc }}
+          annotations:
+            summary: "hello-world burning error budget slowly (6x)"
+            description: "1h error ratio exceeds 6x the SLO budget for 15m. Investigate before it accelerates."
+            runbook_url: "https://github.com/CHARANPRAJWAL/eks-hello-world-gitops/blob/main/docs/RUNBOOK.md#helloworlderrorbudgetslowburn"
+
+    - name: hello-world.latency
+      rules:
+        - alert: HelloWorldHighLatencyP99
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{service="{{ $svc }}"}[5m])) by (le)
+            ) > {{ $latency }}
+          for: 10m
+          labels:
+            severity: warning
+            service: {{ $svc }}
+          annotations:
+            summary: "hello-world p99 latency above SLO"
+            description: "p99 latency has exceeded {{ $latency }}s for 10m."
+            runbook_url: "https://github.com/CHARANPRAJWAL/eks-hello-world-gitops/blob/main/docs/RUNBOOK.md#helloworldhighlatencyp99"
+
+    - name: hello-world.availability
+      rules:
+        - alert: HelloWorldNoReadyReplicas
+          expr: |
+            kube_deployment_status_replicas_available{deployment="{{ include "hello-world.fullname" . }}"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: {{ $svc }}
+          annotations:
+            summary: "hello-world has zero ready replicas"
+            description: "No pods are Ready. The service is down."
+            runbook_url: "https://github.com/CHARANPRAJWAL/eks-hello-world-gitops/blob/main/docs/RUNBOOK.md#helloworldnoreadyreplicas"
+
+        - alert: HelloWorldPodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{container="{{ .Chart.Name }}"}[15m]) * 60 * 5 > 3
+          for: 10m
+          labels:
+            severity: warning
+            service: {{ $svc }}
+          annotations:
+            summary: "hello-world pod is crash-looping"
+            description: "A container has restarted more than 3 times in the last 5 minutes."
+            runbook_url: "https://github.com/CHARANPRAJWAL/eks-hello-world-gitops/blob/main/docs/RUNBOOK.md#helloworldpodcrashlooping"
+
+        - alert: HelloWorldHPAMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="{{ include "hello-world.fullname" . }}"}
+            >=
+            kube_horizontalpodautoscaler_spec_max_replicas{horizontalpodautoscaler="{{ include "hello-world.fullname" . }}"}
+          for: 15m
+          labels:
+            severity: warning
+            service: {{ $svc }}
+          annotations:
+            summary: "hello-world HPA pinned at max replicas"
+            description: "The HPA has been at its maximum for 15m. Consider raising maxReplicas or investigating load."
+            runbook_url: "https://github.com/CHARANPRAJWAL/eks-hello-world-gitops/blob/main/docs/RUNBOOK.md#helloworldhpamaxedout"
+{{- end }}

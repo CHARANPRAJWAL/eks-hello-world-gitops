@@ -1,0 +1,202 @@
+# Default values for the hello-world chart.
+# Per-environment overrides live in gitops/ (values-dev.yaml etc.); this file
+# holds safe, production-shaped defaults so a bare `helm install` is sane.
+
+# -- Number of replicas when autoscaling is disabled. With HPA enabled this is
+# only the value applied before the HPA takes over, so it is kept at the HPA
+# minReplicas to avoid a scale-down flap on first deploy.
+replicaCount: 2
+
+image:
+  repository: hello-world
+  # Prefer digest pinning in real environments (set by CI). Tag is the
+  # fallback for local/kind use. If `digest` is set it wins over `tag`.
+  tag: local
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Application configuration, surfaced as environment variables. Names match
+# app/src/config.js exactly.
+config:
+  greeting: "Hello World"
+  logLevel: "info"
+  # Graceful-shutdown timings. terminationGracePeriodSeconds below is derived
+  # to always exceed drainDelay + shutdownTimeout, so the kubelet never SIGKILLs
+  # mid-drain.
+  drainDelayMs: 5000
+  shutdownTimeoutMs: 15000
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # No token is mounted: the app never calls the Kubernetes API. Removing the
+  # token shrinks the blast radius if the pod is compromised.
+  automountServiceAccountToken: false
+
+# Pod-level and container-level hardening. These are defaults, not knobs to
+# routinely override.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+  # The container listens here; kept separate from service.port so the two can
+  # differ without editing templates.
+  targetPort: 8080
+  appProtocol: http
+
+# Container port the app binds to (PORT env). Must match service.targetPort.
+containerPort: 8080
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    # No CPU limit on purpose: CPU is compressible, and a limit here would
+    # throttle latency-sensitive request handling under burst. Requests still
+    # give the scheduler and HPA what they need. Memory *is* limited because it
+    # is incompressible — better a predictable OOMKill than a noisy-neighbour
+    # node eviction.
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  # Scale-down is deliberately slow to avoid thrashing when traffic is spiky.
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 4
+          periodSeconds: 30
+      selectPolicy: Max
+
+# Guarantees at least this many pods stay up during voluntary disruptions
+# (node drain, cluster upgrade). Expressed as a percentage so it scales with
+# the deployment.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 50%
+
+# Rolling update tuned for zero-downtime: never drop below desired count.
+rollingUpdate:
+  maxUnavailable: 0
+  maxSurge: 1
+
+# Liveness answers "is the process wedged"; readiness answers "route traffic?".
+# They are deliberately different endpoints with different tolerances.
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+  # Startup probe protects slow cold starts without loosening liveness.
+  startup:
+    path: /healthz
+    periodSeconds: 3
+    failureThreshold: 20
+
+# Spread pods across zones and nodes so a single-AZ or single-node failure
+# cannot take out the whole service.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelectorFromChart: true
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelectorFromChart: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Default-deny NetworkPolicy with explicit allows. Ingress: only the scrape
+# port from the monitoring namespace, plus the app port from within the
+# cluster. Egress: DNS only by default.
+networkPolicy:
+  enabled: true
+  # Namespace label used to identify the Prometheus namespace for scrape allow.
+  monitoringNamespaceLabel:
+    kubernetes.io/metadata.name: monitoring
+  # Allow DNS egress (kube-dns) so the app can resolve names if extended later.
+  allowDNS: true
+
+# Prometheus Operator integration. Disabled by default so `helm install` works
+# on a cluster without the CRDs; enabled per-env once kube-prometheus-stack is
+# present.
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  scrapeTimeout: 10s
+  path: /metrics
+  # Label the operator selects on. kube-prometheus-stack defaults to release
+  # name; set to match your install.
+  labels:
+    release: kube-prometheus-stack
+
+prometheusRule:
+  enabled: false
+  labels:
+    release: kube-prometheus-stack
+  # SLO for the burn-rate alerts. 0.25s p-latency objective, 99.9% availability.
+  slo:
+    latencyObjectiveSeconds: 0.25
+    availabilityTarget: 0.999
+
+# Grafana dashboard shipped as a ConfigMap the kube-prometheus-stack Grafana
+# sidecar auto-loads. Disabled by default (needs the sidecar's label); enabled
+# per-env alongside the monitoring stack.
+grafanaDashboard:
+  enabled: false
+  # Label the Grafana sidecar watches; must match the stack's sidecar config
+  # (kube-prometheus-stack default is grafana_dashboard).
+  label: grafana_dashboard
+  # Optional Grafana folder to place the dashboard in.
+  folderAnnotation: ""
+
+# Extra env vars if needed (list of {name,value} or {name,valueFrom}).
+extraEnv: []

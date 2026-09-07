@@ -1,0 +1,49 @@
+{{- if .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "hello-world.fullname" . }}
+  labels:
+    {{- include "hello-world.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "hello-world.selectorLabels" . | nindent 6 }}
+  # Selecting both types with the rules below makes this a default-deny policy:
+  # anything not explicitly allowed is dropped.
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow the app port from anywhere in the cluster. In-cluster callers reach
+    # the service; the LB/ingress controller terminates outside and forwards
+    # here. Tightening this to specific namespaces is a per-env override.
+    - from:
+        - podSelector: {}
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.containerPort }}
+    {{- if .Values.serviceMonitor.enabled }}
+    # Allow Prometheus to scrape /metrics from the monitoring namespace only.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.monitoringNamespaceLabel | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.containerPort }}
+    {{- end }}
+  egress:
+    {{- if .Values.networkPolicy.allowDNS }}
+    # DNS resolution to kube-dns/CoreDNS. Without this, any future outbound
+    # call (or even readiness that resolves a name) would silently fail.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+{{- end }}

@@ -1,0 +1,70 @@
+# kube-prometheus-stack: Prometheus + Grafana + Alertmanager + the CRDs
+# (ServiceMonitor, PrometheusRule) that the hello-world chart depends on.
+# Wave 1: after metrics-server, before the app — the app's ServiceMonitor and
+# PrometheusRule need these CRDs to exist first.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 65.1.1
+    helm:
+      releaseName: kube-prometheus-stack
+      values: |
+        # Discover ServiceMonitors/PrometheusRules in ALL namespaces that carry
+        # the release label, not just this one, so the app in its own namespace
+        # is scraped. The chart labels selected objects with
+        # release=kube-prometheus-stack, which the hello-world chart matches.
+        prometheus:
+          prometheusSpec:
+            serviceMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            # Small retention + storage for a dev cluster.
+            retention: 6h
+            resources:
+              requests:
+                cpu: 100m
+                memory: 400Mi
+        grafana:
+          # No domain/TLS in this demo; reach via port-forward. Admin password
+          # is the chart default for the demo and MUST be overridden in prod.
+          # Dashboards are provisioned as code via the sidecar (see below).
+          defaultDashboardsEnabled: true
+          sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              searchNamespace: ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+        # Alertmanager kept minimal; routing to a real receiver is a prod concern.
+        alertmanager:
+          alertmanagerSpec:
+            resources:
+              requests:
+                cpu: 20m
+                memory: 64Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # CRDs in this chart are large; server-side apply avoids the
+      # last-applied-configuration annotation size limit.
+      - ServerSideApply=true

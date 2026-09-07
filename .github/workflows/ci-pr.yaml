@@ -1,0 +1,78 @@
+# PR checks: everything that can run without cloud credentials, so it is safe
+# on fork PRs. This gate must be green before merge. It deliberately does NOT
+# build-and-push or touch AWS — that only happens on main (see ci-main.yaml),
+# which keeps CI's blast radius tiny.
+name: ci-pr
+
+on:
+  pull_request:
+    branches: [main]
+
+# Least privilege: PR checks only need to read the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: app lint + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  docker-build:
+    name: docker build (test stage runs lint+tests in-image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Build only; no push. The `test` stage fails the build if lint or tests
+      # fail, so a broken image never even gets built.
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          push: false
+          target: runtime
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  helm:
+    name: helm lint + template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.1
+      - run: helm lint charts/hello-world
+      - name: template renders with dev values
+        run: helm template hw charts/hello-world -f gitops/apps/values/hello-world-values.yaml > /dev/null
+
+  terraform:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: fmt
+        run: terraform -chdir=infra fmt -check -recursive
+      - name: init (no backend, no cloud)
+        run: terraform -chdir=infra/envs/dev init -backend=false -input=false
+      - name: validate
+        run: terraform -chdir=infra/envs/dev validate

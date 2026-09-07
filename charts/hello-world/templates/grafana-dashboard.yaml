@@ -1,0 +1,20 @@
+{{- if .Values.grafanaDashboard.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hello-world.fullname" . }}-dashboard
+  labels:
+    {{- include "hello-world.labels" . | nindent 4 }}
+    # The kube-prometheus-stack Grafana sidecar watches for this label across
+    # all namespaces and auto-loads any ConfigMap carrying it as a dashboard.
+    # Dashboards-as-code: no manual import, and the dashboard is versioned with
+    # the app it describes.
+    {{ .Values.grafanaDashboard.label }}: "1"
+  {{- with .Values.grafanaDashboard.folderAnnotation }}
+  annotations:
+    k8s-sidecar-target-directory: {{ . | quote }}
+  {{- end }}
+data:
+  hello-world-red.json: |-
+    {{- .Files.Get "dashboards/hello-world-red.json" | nindent 4 }}
+{{- end }}

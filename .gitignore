@@ -1,0 +1,47 @@
+# --- Node ---
+node_modules/
+coverage/
+npm-debug.log*
+yarn-error.log*
+
+# --- Secrets / local env ---
+# Nothing in this repo should ever contain credentials; these patterns are a
+# backstop, with gitleaks in CI as the actual enforcement.
+.env
+.env.*
+*.pem
+*.key
+credentials
+kubeconfig
+kubeconfig-*
+
+# --- Terraform ---
+# Local state is used for this single-operator demo (see docs/TRADEOFFS.md).
+# State can contain resource attributes and secrets, so it is never committed.
+# The .terraform.lock.hcl (provider checksums) SHOULD be committed and is not
+# ignored here.
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# terraform.tfvars often holds account-specific values; commit .example instead.
+*.auto.tfvars
+terraform.tfvars
+
+# --- Helm ---
+charts/**/charts/
+*.tgz
+
+# --- Tooling / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- Internal working files (not part of the deliverable) ---
+.kiro/
+SESSION_CONTEXT.md
+PLAN.md

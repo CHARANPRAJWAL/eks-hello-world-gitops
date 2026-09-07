@@ -1,0 +1,37 @@
+# Environment values for hello-world in dev. This is the file CI rewrites: on a
+# push to main it sets image.digest to the freshly pushed, scanned image and
+# commits the change, which Argo CD then syncs. Nothing else deploys the app.
+
+image:
+  # Set by Terraform output (ECR repo URL). Placeholder until first apply.
+  repository: ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/hello-world
+  # CI overwrites this line with the pushed digest (sha256:...). Digest wins
+  # over tag in the chart's image helper, so deploys are immutable.
+  digest: ""
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Turn on Prometheus Operator integration now that kube-prometheus-stack (and
+# therefore the ServiceMonitor/PrometheusRule CRDs) is installed by wave 1.
+serviceMonitor:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack
+
+prometheusRule:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack
+
+grafanaDashboard:
+  enabled: true
+  label: grafana_dashboard
+
+# Expose via an internet-facing NLB so the "returns Hello World over HTTP"
+# requirement is demonstrable without a domain. No TLS (documented limitation).
+service:
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"

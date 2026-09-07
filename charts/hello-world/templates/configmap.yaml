@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hello-world.fullname" . }}
+  labels:
+    {{- include "hello-world.labels" . | nindent 4 }}
+# Non-secret config surfaced for visibility and to drive the deployment
+# checksum annotation. The values are also injected as env vars directly; this
+# ConfigMap is the source the pod-roll checksum hashes so a values-only change
+# triggers a rollout.
+data:
+  GREETING: {{ .Values.config.greeting | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  DRAIN_DELAY_MS: {{ .Values.config.drainDelayMs | quote }}
+  SHUTDOWN_TIMEOUT_MS: {{ .Values.config.shutdownTimeoutMs | quote }}
