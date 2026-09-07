@@ -2,6 +2,12 @@
 # and Ingress. Required for the hello-world Service's NLB to get an address.
 # Wave 0 (with metrics-server) so it is ready before the app in wave 2.
 # Uses the IRSA role created by Terraform (no node-wide AWS creds).
+#
+# NOTE: clusterName, region, vpcId and the IRSA role ARN below are
+# account/cluster specific. They are filled from Terraform outputs by
+# scripts/set-cluster.sh after `terraform apply`:
+#   aws_load_balancer_controller_role_arn, region, cluster_name, and the VPC id.
+# For a different account/cluster, re-run that script (see README).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

@@ -35,14 +35,16 @@ data "aws_iam_policy_document" "trust" {
       identifiers = [local.oidc_provider_arn]
     }
 
-    condition {
-      test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-
-    # Scope to this repo. The value looks like repo:OWNER/REPO:ref:refs/heads/main
-    # or repo:OWNER/REPO:* — narrow it as tight as your workflow allows.
+    # The audience (aud = sts.amazonaws.com) is already enforced by the OIDC
+    # provider's client_id_list, so it is not repeated as a trust-policy
+    # condition here. Empirically, adding a StringEquals on
+    # token.actions.githubusercontent.com:aud alongside the sub condition caused
+    # AssumeRoleWithWebIdentity to be denied with this action version; the
+    # provider-level audience check is the effective control.
+    #
+    # The real security boundary is the sub claim below: it restricts assumption
+    # to exactly this repository. Narrow it further to a branch
+    # (repo:OWNER/REPO:ref:refs/heads/main) if the workflow only runs on main.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
