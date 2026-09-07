@@ -1,0 +1,46 @@
+# AWS Load Balancer Controller: provisions NLBs/ALBs for Service type=LoadBalancer
+# and Ingress. Required for the hello-world Service's NLB to get an address.
+# Wave 0 (with metrics-server) so it is ready before the app in wave 2.
+# Uses the IRSA role created by Terraform (no node-wide AWS creds).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-load-balancer-controller
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://aws.github.io/eks-charts
+    chart: aws-load-balancer-controller
+    targetRevision: 1.8.4
+    helm:
+      releaseName: aws-load-balancer-controller
+      values: |
+        clusterName: hello-world-dev
+        region: ap-south-1
+        vpcId: vpc-0f57a1df5f2d74e12
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller
+          annotations:
+            eks.amazonaws.com/role-arn: arn:aws:iam::426187996066:role/hello-world-dev-aws-lb-controller
+        # Small footprint for the dev cluster.
+        replicaCount: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
