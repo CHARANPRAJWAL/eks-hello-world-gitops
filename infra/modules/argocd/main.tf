@@ -69,6 +69,11 @@ resource "kubernetes_manifest" "root_app" {
         repoURL        = var.gitops_repo_url
         targetRevision = var.gitops_target_revision
         path           = "gitops/bootstrap"
+        # Recurse so the child Applications under bootstrap/apps/ are picked up,
+        # not just project.yaml at the top of the path.
+        directory = {
+          recurse = true
+        }
       }
       destination = {
         server    = "https://kubernetes.default.svc"
